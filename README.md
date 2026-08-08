@@ -64,7 +64,6 @@ gws list
 ## Documentation
 
 - See [USAGE.md](USAGE.md) for detailed workflow examples, configuration format specification, and CLI flags.
-- Architectural specifications can be found in [.specs/architecture.md](.specs/architecture.md).
 
 ---
 
