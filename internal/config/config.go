@@ -18,8 +18,16 @@ type ToolConfig struct {
 
 // PaneConfig describes a multiplexer pane configuration.
 type PaneConfig struct {
-	Name    string `yaml:"name"`
-	Command string `yaml:"command"`
+	Name    string            `yaml:"name"`
+	Command string            `yaml:"command"`
+	Dir     string            `yaml:"dir,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+}
+
+// TabConfig describes a tab containing one or more panes.
+type TabConfig struct {
+	Name  string       `yaml:"name"`
+	Panes []PaneConfig `yaml:"panes"`
 }
 
 // WorkspaceConfig represents the .goworkspace.yaml file structure.
@@ -29,7 +37,8 @@ type WorkspaceConfig struct {
 	Editor      ToolConfig        `yaml:"editor"`
 	Terminal    ToolConfig        `yaml:"terminal"`
 	Multiplexer ToolConfig        `yaml:"multiplexer"`
-	Panes       []PaneConfig      `yaml:"panes"`
+	Panes       []PaneConfig      `yaml:"panes,omitempty"`
+	Tabs        []TabConfig       `yaml:"tabs,omitempty"`
 	Env         map[string]string `yaml:"env,omitempty"`
 }
 
@@ -60,7 +69,7 @@ type ResolvedConfig struct {
 	Editor      string
 	Terminal    string
 	Multiplexer string
-	Panes       []PaneConfig
+	Tabs        []TabConfig
 	Env         map[string]string
 }
 
@@ -174,14 +183,41 @@ func Resolve(ws *WorkspaceConfig, global *GlobalConfig, flags ConfigFlags, dir s
 		res.Editor = ws.Editor.Type
 		res.Terminal = ws.Terminal.Type
 		res.Multiplexer = ws.Multiplexer.Type
-		res.Panes = append(res.Panes, ws.Panes...)
 		for k, v := range ws.Env {
 			res.Env[k] = v
+		}
+
+		// Convert Tabs or Panes into Resolved Tabs
+		if len(ws.Tabs) > 0 {
+			for _, tab := range ws.Tabs {
+				res.Tabs = append(res.Tabs, TabConfig{
+					Name:  tab.Name,
+					Panes: append([]PaneConfig(nil), tab.Panes...),
+				})
+			}
+		} else if len(ws.Panes) > 0 {
+			res.Tabs = []TabConfig{
+				{
+					Name:  ws.Name,
+					Panes: append([]PaneConfig(nil), ws.Panes...),
+				},
+			}
 		}
 	}
 
 	if res.Name == "" {
 		res.Name = filepath.Base(dir)
+	}
+
+	if len(res.Tabs) == 0 {
+		res.Tabs = []TabConfig{
+			{
+				Name: res.Name,
+				Panes: []PaneConfig{
+					{Name: "shell", Command: ""},
+				},
+			},
+		}
 	}
 
 	// Apply global defaults if field is empty
@@ -232,9 +268,9 @@ func Resolve(ws *WorkspaceConfig, global *GlobalConfig, flags ConfigFlags, dir s
 		res.Multiplexer = flags.Multiplexer
 	}
 
-	// Append transient extra panes passed via CLI flags
-	if len(flags.ExtraPanes) > 0 {
-		res.Panes = append(res.Panes, flags.ExtraPanes...)
+	// Append transient extra panes passed via CLI flags to the main tab
+	if len(flags.ExtraPanes) > 0 && len(res.Tabs) > 0 {
+		res.Tabs[0].Panes = append(res.Tabs[0].Panes, flags.ExtraPanes...)
 	}
 
 	return res

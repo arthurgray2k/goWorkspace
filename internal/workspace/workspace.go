@@ -269,7 +269,7 @@ func Open(runner exec.Runner, opts OpenOptions) error {
 
 	// 2. Launch multiplexer / terminal session (foreground interactive session or detached terminal window)
 	if resolved.Multiplexer != "none" {
-		err := multiplexer.Launch(runner, resolved.Multiplexer, resolved.Name, wsDir, resolved.Panes, resolved.Terminal)
+		err := multiplexer.Launch(runner, resolved.Multiplexer, resolved.Name, wsDir, resolved.Tabs, resolved.Env, resolved.Terminal)
 		if err != nil {
 			fmt.Printf("Multiplexer error: %v\n", err)
 		}
@@ -368,20 +368,28 @@ func Status(runner exec.Runner, opts StatusOptions) error {
 	fmt.Printf("Multiplexer: %s\n", resolved.Multiplexer)
 	fmt.Printf("\nSession:     %s\n\n", sessionStatus)
 
-	fmt.Printf("%-15s %-12s %s\n", "PANE", "STATUS", "COMMAND")
-	fmt.Println(strings.Repeat("-", 60))
+	for _, tab := range resolved.Tabs {
+		fmt.Printf("TAB: %s\n", tab.Name)
+		fmt.Printf("%-15s %-12s %-20s %s\n", "PANE", "STATUS", "DIRECTORY", "COMMAND")
+		fmt.Println(strings.Repeat("-", 70))
 
-	if len(resolved.Panes) == 0 {
-		fmt.Println("  (no panes defined)")
-	} else {
-		for _, pane := range resolved.Panes {
-			paneStatus := InspectPaneStatus(runner, pane, isSessionRunning)
-			cmdStr := pane.Command
-			if cmdStr == "" {
-				cmdStr = "(interactive shell)"
+		if len(tab.Panes) == 0 {
+			fmt.Println("  (no panes defined)")
+		} else {
+			for _, pane := range tab.Panes {
+				paneStatus := InspectPaneStatus(runner, pane, isSessionRunning)
+				cmdStr := pane.Command
+				if cmdStr == "" {
+					cmdStr = "(interactive shell)"
+				}
+				dirStr := pane.Dir
+				if dirStr == "" {
+					dirStr = "."
+				}
+				fmt.Printf("%-15s %-12s %-20s %s\n", pane.Name, paneStatus, dirStr, cmdStr)
 			}
-			fmt.Printf("%-15s %-12s %s\n", pane.Name, paneStatus, cmdStr)
 		}
+		fmt.Println()
 	}
 
 	return nil

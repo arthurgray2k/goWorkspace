@@ -16,7 +16,7 @@ template: go
 editor:
   type: vscode
 terminal:
-  type: ghostty  # ghostty | foot | qterminal | lxterminal | mate-terminal | gnome-terminal | konsole | xfce4-terminal | tilix | terminator | kitty | alacritty | default
+  type: ghostty
 multiplexer:
   type: zellij
 panes:
@@ -28,6 +28,45 @@ panes:
     command: git status
 env:
   PROJECT_ENV: development
+```
+
+### Multi-Tab, Subdirectory, & Environment Variables Example:
+
+```yaml
+name: my-complex-app
+template: go
+editor:
+  type: vscode
+terminal:
+  type: ghostty
+multiplexer:
+  type: zellij
+env:
+  GLOBAL_ENV: production
+tabs:
+  - name: Code
+    panes:
+      - name: shell
+        command: ""
+      - name: git
+        command: git status
+
+  - name: Services
+    panes:
+      - name: server
+        dir: ./cmd/server       # Opens pane inside ./cmd/server
+        command: go run main.go
+        env:
+          PORT: "8080"
+          DB_URL: "postgres://localhost:5432/mydb"
+
+  - name: Frontend
+    panes:
+      - name: web
+        dir: ./web              # Opens pane inside ./web
+        command: npm run dev
+        env:
+          VITE_PORT: "3000"
 ```
 
 ---
