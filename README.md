@@ -52,6 +52,9 @@ gws open
 # Check workspace session status
 gws status
 
+# Stop active workspace session
+gws stop
+
 # List all registered workspaces
 gws list
 ```

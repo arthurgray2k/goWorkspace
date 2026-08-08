@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/arthurgray2k/goWorkspace/internal/config"
 	"github.com/arthurgray2k/goWorkspace/internal/exec"
 	"github.com/arthurgray2k/goWorkspace/internal/workspace"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func printGlobalHelp() {
 	helpText := `goWorkspace (gws) - Lightweight Linux Developer Workspace Manager
@@ -21,8 +22,9 @@ Usage:
 Commands:
   init      Initialize workspace configuration (.goworkspace.yaml) in current or target project
   open      Open/attach workspace tools (multiplexer, editor, terminal)
+  stop      Stop an active workspace session
   list      List all registered workspaces and their current status
-  status    Show status of a workspace
+  status    Show status of a workspace and process inspection of panes
   resume    Restore/open workspace session
   remove    Remove workspace configuration (NEVER deletes project files)
   config    View or update global configuration (~/.config/goworkspace/config.yaml)
@@ -36,10 +38,9 @@ Examples:
   gws open
   gws open ~/projects/my-repo
   gws open my-repo
-  gws open --no-editor
-  gws open --no-multiplexer
-  gws list
+  gws stop my-repo
   gws status
+  gws list
   gws remove
 
 Run 'gws <command> --help' for details on a specific command.
@@ -120,6 +121,8 @@ Options:
 		noEd := fs.Bool("no-editor", false, "Disable launching editor")
 		mux := fs.String("multiplexer", "", "Override multiplexer (zellij, none)")
 		noMux := fs.Bool("no-multiplexer", false, "Disable multiplexer")
+		var paneFlags config.StringArrayFlag
+		fs.Var(&paneFlags, "pane", "Inject dynamic transient pane (e.g. --pane 'db:docker compose up')")
 
 		fs.Usage = func() {
 			fmt.Print(`gws open - Open Workspace
@@ -132,11 +135,12 @@ Options:
   --no-editor           Do not open configured editor
   --multiplexer <type>   Override multiplexer (zellij, none)
   --no-multiplexer     Do not launch multiplexer session
+  --pane <name:command> Inject dynamic transient pane (can be passed multiple times)
 
 Examples:
   gws open
   gws open ~/projects/myApp
-  gws open myApp
+  gws open myApp --pane "logs:tail -f dev.log"
 `)
 		}
 
@@ -146,16 +150,45 @@ Examples:
 			target = fs.Arg(0)
 		}
 
+		var extraPanes []config.PaneConfig
+		for _, raw := range paneFlags {
+			parsed := config.ParsePaneFlag(raw)
+			if parsed.Name != "" || parsed.Command != "" {
+				extraPanes = append(extraPanes, parsed)
+			}
+		}
+
 		opts := workspace.OpenOptions{
 			Dir:         target,
 			Editor:      *ed,
 			NoEditor:    *noEd,
 			Multiplexer: *mux,
 			NoMux:       *noMux,
+			ExtraPanes:  extraPanes,
 		}
 
 		if err := workspace.Open(runner, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening workspace: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "stop":
+		fs := flag.NewFlagSet("stop", flag.ExitOnError)
+		fs.Usage = func() {
+			fmt.Print(`gws stop - Stop Workspace Session
+
+Usage:
+  gws stop [path_or_workspace_name]
+`)
+		}
+		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
+
+		if err := workspace.Stop(runner, workspace.StopOptions{Dir: target}); err != nil {
+			fmt.Fprintf(os.Stderr, "Error stopping workspace: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -201,6 +234,8 @@ Usage:
 		noEd := fs.Bool("no-editor", false, "Disable editor")
 		mux := fs.String("multiplexer", "", "Override multiplexer")
 		noMux := fs.Bool("no-multiplexer", false, "Disable multiplexer")
+		var paneFlags config.StringArrayFlag
+		fs.Var(&paneFlags, "pane", "Inject dynamic transient pane")
 
 		fs.Usage = func() {
 			fmt.Print(`gws resume - Restore Workspace
@@ -215,12 +250,21 @@ Usage:
 			target = fs.Arg(0)
 		}
 
+		var extraPanes []config.PaneConfig
+		for _, raw := range paneFlags {
+			parsed := config.ParsePaneFlag(raw)
+			if parsed.Name != "" || parsed.Command != "" {
+				extraPanes = append(extraPanes, parsed)
+			}
+		}
+
 		opts := workspace.OpenOptions{
 			Dir:         target,
 			Editor:      *ed,
 			NoEditor:    *noEd,
 			Multiplexer: *mux,
 			NoMux:       *noMux,
+			ExtraPanes:  extraPanes,
 		}
 
 		if err := workspace.Resume(runner, opts); err != nil {

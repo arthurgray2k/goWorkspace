@@ -95,6 +95,9 @@ gws open ~/golang_toolshed/goJPeek
 # Open workspace by registered project name from anywhere
 gws open goJPeek
 
+# Inject dynamic transient panes without modifying .goworkspace.yaml
+gws open --pane "db:docker compose up" --pane "logs:tail -f app.log"
+
 # Open without launching VS Code
 gws open --no-editor
 
@@ -102,18 +105,47 @@ gws open --no-editor
 gws open --no-multiplexer
 ```
 
-### 3. `gws list`
+### 3. `gws stop`
+Stops an active workspace session. Can be run inside the project directory or by workspace name/path from anywhere.
+
+```bash
+# Stop current workspace session
+gws stop
+
+# Stop workspace session by name from anywhere
+gws stop goJPeek
+```
+
+### 4. `gws list`
 Lists all registered workspaces and their active session status.
 
 ```bash
 gws list
 ```
 
-### 4. `gws status`
-Displays status details, configured tools, session state, and defined panes for the current workspace.
+### 5. `gws status`
+Displays process tree inspection status for each pane, configured tools, and session state.
 
 ```bash
 gws status
+```
+*Example Output:*
+```text
+Workspace:   goJPeek
+Path:        /home/user/golang_toolshed/goJPeek
+Template:    go
+Editor:      vscode
+Terminal:    ghostty
+Multiplexer: zellij
+
+Session:     running
+
+PANE            STATUS       COMMAND
+------------------------------------------------------------
+shell           running      (interactive shell)
+test            running      (interactive shell)
+git             completed    git status
+db              running      docker compose up
 ```
 
 ### 5. `gws resume`

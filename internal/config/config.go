@@ -49,6 +49,7 @@ type ConfigFlags struct {
 	Multiplexer   string
 	NoMultiplexer bool
 	Template      string
+	ExtraPanes    []PaneConfig
 }
 
 // ResolvedConfig contains the final combined configuration after applying precedence rules.
@@ -229,6 +230,11 @@ func Resolve(ws *WorkspaceConfig, global *GlobalConfig, flags ConfigFlags, dir s
 		res.Multiplexer = "none"
 	} else if flags.Multiplexer != "" {
 		res.Multiplexer = flags.Multiplexer
+	}
+
+	// Append transient extra panes passed via CLI flags
+	if len(flags.ExtraPanes) > 0 {
+		res.Panes = append(res.Panes, flags.ExtraPanes...)
 	}
 
 	return res

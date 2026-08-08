@@ -216,6 +216,7 @@ type OpenOptions struct {
 	NoMux       bool
 	Editor      string
 	Multiplexer string
+	ExtraPanes  []config.PaneConfig
 }
 
 func Open(runner exec.Runner, opts OpenOptions) error {
@@ -247,6 +248,10 @@ func Open(runner exec.Runner, opts OpenOptions) error {
 		flags.NoMultiplexer = true
 	} else if opts.Multiplexer != "" {
 		flags.Multiplexer = opts.Multiplexer
+	}
+
+	if len(opts.ExtraPanes) > 0 {
+		flags.ExtraPanes = append(flags.ExtraPanes, opts.ExtraPanes...)
 	}
 
 	resolved := config.Resolve(wsConfig, globalCfg, flags, wsDir)
@@ -308,6 +313,32 @@ type StatusOptions struct {
 	Dir string
 }
 
+// InspectPaneStatus checks process tree to determine individual pane running status.
+func InspectPaneStatus(runner exec.Runner, pane config.PaneConfig, sessionRunning bool) string {
+	if !sessionRunning {
+		return "stopped"
+	}
+	if strings.TrimSpace(pane.Command) == "" {
+		return "running"
+	}
+
+	parts := strings.Fields(strings.TrimSpace(pane.Command))
+	if len(parts) == 0 {
+		return "running"
+	}
+
+	cmdBinary := parts[0]
+	path, err := runner.LookPath("pgrep")
+	if err == nil {
+		out, err := runner.CombinedOutput("", path, "-x", cmdBinary)
+		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+			return "running"
+		}
+	}
+
+	return "completed"
+}
+
 func Status(runner exec.Runner, opts StatusOptions) error {
 	targetDir, err := ResolveTargetDir(opts.Dir)
 	if err != nil {
@@ -327,6 +358,7 @@ func Status(runner exec.Runner, opts StatusOptions) error {
 	globalCfg, _ := config.LoadGlobalConfig()
 	resolved := config.Resolve(wsConfig, globalCfg, config.ConfigFlags{}, wsDir)
 	sessionStatus := registry.CheckSessionStatus(runner, resolved.Name)
+	isSessionRunning := sessionStatus == "running"
 
 	fmt.Printf("Workspace:   %s\n", resolved.Name)
 	fmt.Printf("Path:        %s\n", wsDir)
@@ -336,19 +368,55 @@ func Status(runner exec.Runner, opts StatusOptions) error {
 	fmt.Printf("Multiplexer: %s\n", resolved.Multiplexer)
 	fmt.Printf("\nSession:     %s\n\n", sessionStatus)
 
-	fmt.Println("PANES")
+	fmt.Printf("%-15s %-12s %s\n", "PANE", "STATUS", "COMMAND")
+	fmt.Println(strings.Repeat("-", 60))
+
 	if len(resolved.Panes) == 0 {
 		fmt.Println("  (no panes defined)")
 	} else {
 		for _, pane := range resolved.Panes {
+			paneStatus := InspectPaneStatus(runner, pane, isSessionRunning)
 			cmdStr := pane.Command
 			if cmdStr == "" {
 				cmdStr = "(interactive shell)"
 			}
-			fmt.Printf("  %-12s %s\n", pane.Name, cmdStr)
+			fmt.Printf("%-15s %-12s %s\n", pane.Name, paneStatus, cmdStr)
 		}
 	}
 
+	return nil
+}
+
+type StopOptions struct {
+	Dir string
+}
+
+func Stop(runner exec.Runner, opts StopOptions) error {
+	targetDir, err := ResolveTargetDir(opts.Dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory or workspace %q: %w", opts.Dir, err)
+	}
+
+	wsDir, err := FindWorkspaceDir(targetDir)
+	if err != nil {
+		return fmt.Errorf("No %s found in %s.", config.WorkspaceConfigFilename, targetDir)
+	}
+
+	wsConfig, err := config.LoadWorkspaceConfig(wsDir)
+	if err != nil {
+		return err
+	}
+
+	globalCfg, _ := config.LoadGlobalConfig()
+	resolved := config.Resolve(wsConfig, globalCfg, config.ConfigFlags{}, wsDir)
+
+	path, err := runner.LookPath("zellij")
+	if err != nil {
+		return fmt.Errorf("Zellij executable not found on PATH")
+	}
+
+	_, _ = runner.CombinedOutput("", path, "delete-session", "--force", resolved.Name)
+	fmt.Printf("Stopped workspace session '%s'.\n", resolved.Name)
 	return nil
 }
 

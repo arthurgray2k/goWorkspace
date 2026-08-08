@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthurgray2k/goWorkspace/internal/exec"
 	"gopkg.in/yaml.v3"
@@ -128,6 +129,26 @@ func UnregisterWorkspace(projectPath string) error {
 	return SaveRegistry(reg)
 }
 
+// StripANSI removes ANSI terminal escape codes from a string.
+func StripANSI(str string) string {
+	var result strings.Builder
+	inEscape := false
+	for i := 0; i < len(str); i++ {
+		if str[i] == '\x1b' {
+			inEscape = true
+			continue
+		}
+		if inEscape {
+			if (str[i] >= 'a' && str[i] <= 'z') || (str[i] >= 'A' && str[i] <= 'Z') {
+				inEscape = false
+			}
+			continue
+		}
+		result.WriteByte(str[i])
+	}
+	return result.String()
+}
+
 // CheckSessionStatus checks if a Zellij session with the specified name is currently running.
 func CheckSessionStatus(runner exec.Runner, name string) string {
 	if runner == nil {
@@ -144,20 +165,18 @@ func CheckSessionStatus(runner exec.Runner, name string) string {
 		return "stopped"
 	}
 
-	// Format of zellij list-sessions is e.g.: "goJPeek [CREATED ...]" or "goJPeek"
-	lines := string(out)
-	for _, line := range filepath.SplitList(lines) {
-		if len(line) > 0 && line == name {
-			return "running"
+	cleanOut := StripANSI(string(out))
+	lines := splitLines(cleanOut)
+	for _, l := range lines {
+		l = stringsTrim(l)
+		if l == "" {
+			continue
 		}
-	}
-
-	if len(lines) > 0 {
-		for _, l := range splitLines(lines) {
-			l = stringsTrim(l)
-			if l == name || hasWordPrefix(l, name) {
-				return "running"
-			}
+		if strings.Contains(l, "(EXITED") || strings.Contains(l, "EXITED") {
+			continue
+		}
+		if l == name || hasWordPrefix(l, name) {
+			return "running"
 		}
 	}
 

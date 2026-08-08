@@ -36,18 +36,25 @@ func TestRegistryOperations(t *testing.T) {
 	}
 }
 
-func TestCheckSessionStatus(t *testing.T) {
+func TestCheckSessionStatusWithANSI(t *testing.T) {
 	mock := exec.NewMockRunner()
 	mock.Available["zellij"] = true
-	mock.OutputReturn["zellij"] = []byte("goJPeek [CREATED 2 HOURS AGO]\nsomeOtherSession")
 
-	status := CheckSessionStatus(mock, "goJPeek")
-	if status != "running" {
-		t.Fatalf("expected running status, got %s", status)
+	// Simulate actual zellij list-sessions output with ANSI escape codes
+	mock.OutputReturn["zellij"] = []byte("\x1b[32;1mbrave-foxglove\x1b[m [Created \x1b[35;1m10h\x1b[m ago] (\x1b[31;1mEXITED\x1b[m - attach)\n\x1b[32;1mgoJPeek\x1b[m [Created \x1b[35;1m23m\x1b[m ago]\n")
+
+	statusRunning := CheckSessionStatus(mock, "goJPeek")
+	if statusRunning != "running" {
+		t.Fatalf("expected running status for goJPeek, got %s", statusRunning)
+	}
+
+	statusExited := CheckSessionStatus(mock, "brave-foxglove")
+	if statusExited != "stopped" {
+		t.Fatalf("expected stopped status for brave-foxglove, got %s", statusExited)
 	}
 
 	statusStopped := CheckSessionStatus(mock, "nonExistent")
 	if statusStopped != "stopped" {
-		t.Fatalf("expected stopped status, got %s", statusStopped)
+		t.Fatalf("expected stopped status for nonExistent, got %s", statusStopped)
 	}
 }
