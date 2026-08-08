@@ -18,6 +18,39 @@ import (
 	"github.com/arthurgray2k/goWorkspace/internal/terminal"
 )
 
+// ResolveTargetDir resolves a workspace target (empty string for CWD, relative/abs path, ~ path, or registered workspace name).
+func ResolveTargetDir(target string) (string, error) {
+	if target == "" {
+		return os.Getwd()
+	}
+
+	// Expand ~ path
+	if strings.HasPrefix(target, "~") {
+		if home, err := os.UserHomeDir(); err == nil {
+			target = filepath.Join(home, target[1:])
+		}
+	}
+
+	// Check if target exists as a local directory
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		return filepath.Abs(target)
+	}
+
+	// Check if target matches a registered workspace name
+	reg, err := registry.LoadRegistry()
+	if err == nil {
+		for _, entry := range reg.Workspaces {
+			if strings.EqualFold(entry.Name, target) {
+				if info, err := os.Stat(entry.Path); err == nil && info.IsDir() {
+					return entry.Path, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("workspace or directory %q not found", target)
+}
+
 // FindWorkspaceDir traverses up from startDir searching for .goworkspace.yaml.
 func FindWorkspaceDir(startDir string) (string, error) {
 	abs, err := filepath.Abs(startDir)
@@ -55,18 +88,14 @@ type InitOptions struct {
 }
 
 func Init(runner exec.Runner, opts InitOptions) error {
-	dir := opts.Dir
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current working directory: %w", err)
-		}
+	targetDir, err := ResolveTargetDir(opts.Dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory: %w", err)
 	}
 
-	absDir, err := filepath.Abs(dir)
+	absDir, err := filepath.Abs(targetDir)
 	if err != nil {
-		absDir = dir
+		absDir = targetDir
 	}
 
 	dirName := filepath.Base(absDir)
@@ -173,7 +202,6 @@ func Init(runner exec.Runner, opts InitOptions) error {
 
 	err = registry.RegisterWorkspace(wsConfig.Name, absDir, wsConfig.Template, time.Now().Format(time.RFC3339))
 	if err != nil {
-		// Non-fatal warning if registry cannot be updated
 		fmt.Printf("Warning: Could not register workspace in state file: %v\n", err)
 	}
 
@@ -191,18 +219,14 @@ type OpenOptions struct {
 }
 
 func Open(runner exec.Runner, opts OpenOptions) error {
-	dir := opts.Dir
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
+	targetDir, err := ResolveTargetDir(opts.Dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory or workspace name %q: %w", opts.Dir, err)
 	}
 
-	wsDir, err := FindWorkspaceDir(dir)
+	wsDir, err := FindWorkspaceDir(targetDir)
 	if err != nil {
-		return fmt.Errorf("No %s found.\nRun:\n    gws init", config.WorkspaceConfigFilename)
+		return fmt.Errorf("No %s found in %s.\nRun:\n    gws init", config.WorkspaceConfigFilename, targetDir)
 	}
 
 	wsConfig, err := config.LoadWorkspaceConfig(wsDir)
@@ -230,25 +254,24 @@ func Open(runner exec.Runner, opts OpenOptions) error {
 	// Register last opened
 	_ = registry.RegisterWorkspace(resolved.Name, wsDir, resolved.Template, time.Now().Format(time.RFC3339))
 
-	// 1. Launch multiplexer / terminal session if multiplexer enabled
-	if resolved.Multiplexer != "none" {
-		err := multiplexer.Launch(runner, resolved.Multiplexer, resolved.Name, wsDir, resolved.Panes)
-		if err != nil {
-			fmt.Printf("Multiplexer error: %v\n", err)
-		}
-	} else if resolved.Terminal != "none" && resolved.Terminal != "default" && resolved.Terminal != "system" {
-		// Launch requested terminal emulator if multiplexer is disabled
-		err := terminal.Launch(runner, resolved.Terminal, "", nil, wsDir)
-		if err != nil {
-			fmt.Printf("Terminal error: %v\n", err)
-		}
-	}
-
-	// 2. Launch editor if configured and enabled
+	// 1. Launch editor first if configured and enabled (non-blocking background process)
 	if resolved.Editor != "none" {
 		err := editor.Launch(runner, resolved.Editor, wsDir)
 		if err != nil {
 			fmt.Printf("Editor error: %v\n", err)
+		}
+	}
+
+	// 2. Launch multiplexer / terminal session (foreground interactive session or detached terminal window)
+	if resolved.Multiplexer != "none" {
+		err := multiplexer.Launch(runner, resolved.Multiplexer, resolved.Name, wsDir, resolved.Panes, resolved.Terminal)
+		if err != nil {
+			fmt.Printf("Multiplexer error: %v\n", err)
+		}
+	} else if resolved.Terminal != "none" && resolved.Terminal != "default" && resolved.Terminal != "system" {
+		err := terminal.Launch(runner, resolved.Terminal, "", nil, wsDir)
+		if err != nil {
+			fmt.Printf("Terminal error: %v\n", err)
 		}
 	}
 
@@ -286,18 +309,14 @@ type StatusOptions struct {
 }
 
 func Status(runner exec.Runner, opts StatusOptions) error {
-	dir := opts.Dir
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
+	targetDir, err := ResolveTargetDir(opts.Dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory or workspace %q: %w", opts.Dir, err)
 	}
 
-	wsDir, err := FindWorkspaceDir(dir)
+	wsDir, err := FindWorkspaceDir(targetDir)
 	if err != nil {
-		return fmt.Errorf("No %s found in %s or parent directories.", config.WorkspaceConfigFilename, dir)
+		return fmt.Errorf("No %s found in %s or parent directories.", config.WorkspaceConfigFilename, targetDir)
 	}
 
 	wsConfig, err := config.LoadWorkspaceConfig(wsDir)
@@ -344,18 +363,14 @@ type RemoveOptions struct {
 }
 
 func Remove(runner exec.Runner, opts RemoveOptions) error {
-	dir := opts.Dir
-	if dir == "" {
-		var err error
-		dir, err = os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
+	targetDir, err := ResolveTargetDir(opts.Dir)
+	if err != nil {
+		return fmt.Errorf("failed to resolve directory or workspace %q: %w", opts.Dir, err)
 	}
 
-	wsDir, err := FindWorkspaceDir(dir)
+	wsDir, err := FindWorkspaceDir(targetDir)
 	if err != nil {
-		return fmt.Errorf("No %s found to remove in %s.", config.WorkspaceConfigFilename, dir)
+		return fmt.Errorf("No %s found to remove in %s.", config.WorkspaceConfigFilename, targetDir)
 	}
 
 	configPath := filepath.Join(wsDir, config.WorkspaceConfigFilename)

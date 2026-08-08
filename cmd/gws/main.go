@@ -16,13 +16,13 @@ func printGlobalHelp() {
 	helpText := `goWorkspace (gws) - Lightweight Linux Developer Workspace Manager
 
 Usage:
-  gws <command> [options]
+  gws <command> [target] [options]
 
 Commands:
   init      Initialize workspace configuration (.goworkspace.yaml) in current or target project
   open      Open/attach workspace tools (multiplexer, editor, terminal)
   list      List all registered workspaces and their current status
-  status    Show status of the current workspace
+  status    Show status of a workspace
   resume    Restore/open workspace session
   remove    Remove workspace configuration (NEVER deletes project files)
   config    View or update global configuration (~/.config/goworkspace/config.yaml)
@@ -33,8 +33,9 @@ Global Options:
 
 Examples:
   gws init
-  gws init --template go --editor vscode --multiplexer zellij
   gws open
+  gws open ~/projects/my-repo
+  gws open my-repo
   gws open --no-editor
   gws open --no-multiplexer
   gws list
@@ -76,7 +77,7 @@ func main() {
 			fmt.Print(`gws init - Initialize Workspace
 
 Usage:
-  gws init [options]
+  gws init [target_dir] [options]
 
 Options:
   --template <type>     Set project template (go, dotnet, node, rust, generic)
@@ -89,8 +90,13 @@ Options:
 		}
 
 		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
 
 		opts := workspace.InitOptions{
+			Dir:         target,
 			Template:    *tmpl,
 			Editor:      *ed,
 			Terminal:    *term,
@@ -119,19 +125,29 @@ Options:
 			fmt.Print(`gws open - Open Workspace
 
 Usage:
-  gws open [options]
+  gws open [path_or_workspace_name] [options]
 
 Options:
-  --editor <type>     Override editor (vscode, zed, none)
-  --no-editor         Do not open configured editor
-  --multiplexer <type> Override multiplexer (zellij, none)
-  --no-multiplexer   Do not launch multiplexer session
+  --editor <type>       Override editor (vscode, zed, none)
+  --no-editor           Do not open configured editor
+  --multiplexer <type>   Override multiplexer (zellij, none)
+  --no-multiplexer     Do not launch multiplexer session
+
+Examples:
+  gws open
+  gws open ~/projects/myApp
+  gws open myApp
 `)
 		}
 
 		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
 
 		opts := workspace.OpenOptions{
+			Dir:         target,
 			Editor:      *ed,
 			NoEditor:    *noEd,
 			Multiplexer: *mux,
@@ -165,12 +181,16 @@ Usage:
 			fmt.Print(`gws status - Workspace Status
 
 Usage:
-  gws status
+  gws status [path_or_workspace_name]
 `)
 		}
 		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
 
-		if err := workspace.Status(runner, workspace.StatusOptions{}); err != nil {
+		if err := workspace.Status(runner, workspace.StatusOptions{Dir: target}); err != nil {
 			fmt.Fprintf(os.Stderr, "Error getting workspace status: %v\n", err)
 			os.Exit(1)
 		}
@@ -186,12 +206,17 @@ Usage:
 			fmt.Print(`gws resume - Restore Workspace
 
 Usage:
-  gws resume [options]
+  gws resume [path_or_workspace_name] [options]
 `)
 		}
 		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
 
 		opts := workspace.OpenOptions{
+			Dir:         target,
 			Editor:      *ed,
 			NoEditor:    *noEd,
 			Multiplexer: *mux,
@@ -212,15 +237,20 @@ Usage:
 			fmt.Print(`gws remove - Remove Workspace Configuration
 
 Usage:
-  gws remove [options]
+  gws remove [path_or_workspace_name] [options]
 
 Options:
   -y, --yes  Confirm configuration removal without interactive confirmation prompt
 `)
 		}
 		_ = fs.Parse(os.Args[2:])
+		target := ""
+		if fs.NArg() > 0 {
+			target = fs.Arg(0)
+		}
 
 		opts := workspace.RemoveOptions{
+			Dir: target,
 			Yes: *yes,
 		}
 

@@ -16,7 +16,7 @@ template: go
 editor:
   type: vscode
 terminal:
-  type: ghostty
+  type: ghostty  # ghostty | foot | qterminal | lxterminal | mate-terminal | gnome-terminal | konsole | xfce4-terminal | tilix | terminator | kitty | alacritty | default
 multiplexer:
   type: zellij
 panes:
@@ -83,11 +83,17 @@ gws init -y --template go --editor vscode --multiplexer zellij
 ```
 
 ### 2. `gws open`
-Opens the project workspace. Traverses parent directories to locate `.goworkspace.yaml`, creates or attaches the Zellij multiplexer session, generates layout panes, and launches the configured editor.
+Opens the project workspace. You can run it inside the project directory, or pass a path / registered workspace name from anywhere in your terminal.
 
 ```bash
-# Open current workspace
+# Open workspace in current directory
 gws open
+
+# Open workspace by path from anywhere
+gws open ~/golang_toolshed/goJPeek
+
+# Open workspace by registered project name from anywhere
+gws open goJPeek
 
 # Open without launching VS Code
 gws open --no-editor

@@ -8,6 +8,7 @@ import (
 
 	"github.com/arthurgray2k/goWorkspace/internal/config"
 	"github.com/arthurgray2k/goWorkspace/internal/exec"
+	"github.com/arthurgray2k/goWorkspace/internal/terminal"
 )
 
 // IsInsideZellij checks if the current execution environment is inside a Zellij session.
@@ -31,6 +32,11 @@ func GenerateKDLLayout(sessionName string, panes []config.PaneConfig) string {
 	sb.WriteString("    }\n")
 	sb.WriteString(fmt.Sprintf("    tab name=\"%s\" {\n", escapeKDLString(sessionName)))
 
+	userShell := os.Getenv("SHELL")
+	if userShell == "" {
+		userShell = "/bin/bash"
+	}
+
 	if len(panes) == 0 {
 		sb.WriteString("        pane name=\"shell\"\n")
 	} else {
@@ -43,18 +49,10 @@ func GenerateKDLLayout(sessionName string, panes []config.PaneConfig) string {
 			if cmdStr == "" {
 				sb.WriteString(fmt.Sprintf("        pane name=\"%s\"\n", escapeKDLString(paneName)))
 			} else {
-				parts := strings.Fields(cmdStr)
-				cmdBinary := parts[0]
-				cmdArgs := parts[1:]
-
-				sb.WriteString(fmt.Sprintf("        pane name=\"%s\" command=\"%s\" {\n", escapeKDLString(paneName), escapeKDLString(cmdBinary)))
-				if len(cmdArgs) > 0 {
-					sb.WriteString("            args")
-					for _, arg := range cmdArgs {
-						sb.WriteString(fmt.Sprintf(" \"%s\"", escapeKDLString(arg)))
-					}
-					sb.WriteString("\n")
-				}
+				// Wrap initial command in user's shell so output displays and drops into an interactive shell
+				shellCmd := fmt.Sprintf("%s; exec %s", cmdStr, userShell)
+				sb.WriteString(fmt.Sprintf("        pane name=\"%s\" command=\"%s\" {\n", escapeKDLString(paneName), escapeKDLString(userShell)))
+				sb.WriteString(fmt.Sprintf("            args \"-c\" \"%s\"\n", escapeKDLString(shellCmd)))
 				sb.WriteString("        }\n")
 			}
 		}
@@ -73,9 +71,9 @@ func escapeKDLString(s string) string {
 }
 
 // Launch handles creation or attachment to a Zellij session using the generated layout.
-func Launch(runner exec.Runner, muxType string, sessionName string, projectDir string, panes []config.PaneConfig) error {
-	normalized := strings.ToLower(strings.TrimSpace(muxType))
-	if normalized == "" || normalized == "none" {
+func Launch(runner exec.Runner, muxType string, sessionName string, projectDir string, panes []config.PaneConfig, termType string) error {
+	normalizedMux := strings.ToLower(strings.TrimSpace(muxType))
+	if normalizedMux == "" || normalizedMux == "none" {
 		return nil
 	}
 
@@ -111,7 +109,14 @@ func Launch(runner exec.Runner, muxType string, sessionName string, projectDir s
 		return fmt.Errorf("failed to create temporary Zellij layout file: %w", err)
 	}
 
-	args := []string{"--layout", layoutPath, "attach", "--create", cleanSessionName}
+	zellijArgs := []string{"--layout", layoutPath, "attach", "--create", cleanSessionName}
 
-	return runner.Run(projectDir, path, args...)
+	// Launch inside a new window/tab of Ghostty or default system terminal emulator if available
+	termBin, termArgs, ok := terminal.BuildLaunchCommand(runner, termType, path, zellijArgs)
+	if ok {
+		return runner.Start(projectDir, termBin, termArgs...)
+	}
+
+	// Fallback: Run Zellij directly in current terminal session
+	return runner.Run(projectDir, path, zellijArgs...)
 }
