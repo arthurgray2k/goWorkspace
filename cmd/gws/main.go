@@ -8,18 +8,20 @@ import (
 
 	"github.com/arthurgray2k/goWorkspace/internal/config"
 	"github.com/arthurgray2k/goWorkspace/internal/exec"
+	"github.com/arthurgray2k/goWorkspace/internal/tui"
 	"github.com/arthurgray2k/goWorkspace/internal/workspace"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func printGlobalHelp() {
 	helpText := `goWorkspace (gws) - Lightweight Linux Developer Workspace Manager
 
 Usage:
-  gws <command> [target] [options]
+  gws [command] [target] [options]
 
 Commands:
+  tui       Launch interactive TUI dashboard (default when running 'gws' in terminal)
   init      Initialize workspace configuration (.goworkspace.yaml) in current or target project
   open      Open/attach workspace tools (multiplexer, editor, terminal)
   stop      Stop an active workspace session
@@ -34,6 +36,8 @@ Global Options:
   -v, --version  Show version information
 
 Examples:
+  gws
+  gws tui
   gws init
   gws open
   gws open ~/projects/my-repo
@@ -49,13 +53,22 @@ Run 'gws <command> --help' for details on a specific command.
 }
 
 func main() {
+	runner := exec.NewOSExecRunner()
+
 	if len(os.Args) < 2 {
+		// If stdout is terminal and no args passed, default to launching interactive TUI
+		fi, err := os.Stdout.Stat()
+		if err == nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+			if err := tui.RunDashboard(runner); err != nil {
+				printGlobalHelp()
+			}
+			return
+		}
 		printGlobalHelp()
 		os.Exit(0)
 	}
 
 	subcommand := os.Args[1]
-	runner := exec.NewOSExecRunner()
 
 	switch subcommand {
 	case "-h", "--help", "help":
@@ -63,6 +76,12 @@ func main() {
 
 	case "-v", "--version", "version":
 		fmt.Printf("gws version %s\n", version)
+
+	case "tui", "ui":
+		if err := tui.RunDashboard(runner); err != nil {
+			fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+			os.Exit(1)
+		}
 
 	case "init":
 		fs := flag.NewFlagSet("init", flag.ExitOnError)

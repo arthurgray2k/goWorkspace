@@ -110,7 +110,24 @@ When opening a workspace, settings are evaluated in order:
 
 ## CLI Reference
 
-### 1. `gws init`
+### 1. `gws tui` (or `gws`)
+Launches the interactive terminal dashboard for navigating, opening, inspecting, and stopping workspaces visually.
+
+```bash
+# Launch interactive TUI dashboard
+gws tui
+# or simply
+gws
+```
+
+*Keybindings in TUI:*
+- **`↑` / `↓`** or **`k` / `j`**: Navigate workspace list
+- **`o`**: Open selected workspace
+- **`s`**: Inspect status details of selected workspace
+- **`x`**: Stop active session of selected workspace
+- **`q`** or **`Esc`**: Exit dashboard
+
+### 2. `gws init`
 Initializes workspace configuration in the current directory. Auto-detects project type and offers interactive defaults.
 
 ```bash
